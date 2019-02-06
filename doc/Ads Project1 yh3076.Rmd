@@ -1,0 +1,700 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+## Part1 Data Clean
+```{r}
+hm_data <-read.csv("/Users/huyiyao/Desktop/Spring2019-Proj1-hyy7-master/output/processed_moments.csv",as.is = TRUE)
+```
+
+```{r}
+# demography
+# information of country
+#head(table(demo_data$country))
+#summary(demo_data$country)
+miscountry<-which(is.na(demo_data$country)==TRUE) # NA of country
+head(sort(table(demo_data$country)/(length(demo_data$country)-length(miscountry)),decreasing = TRUE),10)
+head(sort(table(demo_data$country),decreasing = TRUE),10)
+```
+American are the majority of this data and compared to American, the samples from other country are too small to represent their population, so here we only analyse people who come from America.
+
+```{r}
+# information of age
+# head(table(demo_data$age))
+demo_data$age[which(demo_data$age=="60yrs")]<-60
+agenum<-as.numeric(demo_data$age)
+#head(table(agenum)) # after as numeric some 2 and 2.0 can be conbinned in one term.
+newdemo<-cbind(demo_data,agenum) # add numeric age to demochart
+head(sort(agenum,decreasing = TRUE)) # find the oldest one and see if it it possible
+misage<-c(which(is.na(agenum)==TRUE),which(agenum>200)) # eliminate the age larger than 200
+age0<-length(which(0<agenum&agenum<=10))/(length(agenum)-length(misage)) # 年龄段比例
+age1<-length(which(10<agenum&agenum<=20))/(length(agenum)-length(misage)) 
+age2<-length(which(20<agenum&agenum<=30))/(length(agenum)-length(misage)) 
+age3<-length(which(30<agenum&agenum<=40))/(length(agenum)-length(misage)) 
+age4<-length(which(40<agenum&agenum<=50))/(length(agenum)-length(misage)) 
+age5<-length(which(50<agenum&agenum<=60))/(length(agenum)-length(misage)) 
+age6<-length(which(60<agenum&agenum<=70))/(length(agenum)-length(misage)) 
+age7<-length(which(70<agenum&agenum<=80))/(length(agenum)-length(misage)) 
+age8<-length(which(80<agenum&agenum<=90))/(length(agenum)-length(misage)) 
+age9<-length(which(90<agenum&agenum<=100))/(length(agenum)-length(misage)) 
+# sum(length(which(0<agenum&agenum<=10)),length(which(10<agenum&agenum<=20)),length(which(20<agenum&agenum<=30)),length(which(30<agenum&agenum<=40)),length(which(40<agenum&agenum<=50)),length(which(50<agenum&agenum<=60)),length(which(60<agenum&agenum<=70)),length(which(70<agenum&agenum<=80)),length(which(80<agenum&agenum<=90)),length(which(90<agenum&agenum<=100))) == length(agenum)-length(misage)
+age0_20<-length(which(0<agenum&agenum<=20))/(length(agenum)-length(misage)) # 年龄段比例
+age20_30<-length(which(20<agenum&agenum<=30))/(length(agenum)-length(misage)) 
+age30_40<-length(which(30<agenum&agenum<=40))/(length(agenum)-length(misage)) 
+age40_50<-length(which(40<agenum&agenum<=50))/(length(agenum)-length(misage)) 
+age50_100<-length(which(50<agenum&agenum<=100))/(length(agenum)-length(misage)) 
+agerange<-data.frame(age0_20,age20_30,age30_40,age40_50,age50_100)
+agerange
+```
+
+We can know from the result that the range of normal age is 2-98, and we should also eliminate the age which seems imposible. we seprate the age range into 5 groups, they are 0-20,20-30,30-40,40-50,50-100.
+
+```{r}
+# information of gender
+table(demo_data$gender)
+misgend<-which(is.na(demo_data$gender)==TRUE) # NA od gender
+# information of marital
+mismari<-which(is.na(demo_data$marital)==TRUE) #NA of marital
+table(demo_data$marital)/(length(demo_data$marital)-length(mismari)) # percentage
+# information of parenthood
+misparen<-which(is.na(demo_data$parenthood)==TRUE) #NA of parenthood
+table(demo_data$parenthood)/(length(demo_data$parenthood)-length(misparen)) #percentage
+# demo_data[misparen,"wid"] #find the wid which miss the parenthood data.
+```
+We choose the gender: male and female, which are majority of the gender kind.
+For marital, we use single and married data.
+For parenthood, there are just yes and no.
+
+```{r}
+# other information from data
+table(hm_data$reflection_period)
+misperiod<-which(is.na(hm_data$reflection_period)==TRUE) # there is no NA in this column.
+table(hm_data$predicted_category)
+mispredi_categ<-which(is.na(hm_data$predicted_category)==TRUE) #there is no NA in this column.
+table(hm_data$ground_truth_category)
+mistruth_categ<-which(is.na(hm_data$ground_truth_category)==TRUE) # many NAs
+```
+
+We can find that the reflection period are almostly equal to each other. 
+It is better for us to use predicted category data because there are no NA in this data set. 
+
+```{r}
+library(purrr)
+library(dplyr)
+library(tidyverse)
+library(tidytext)
+library(DT)
+library(scales)
+library(wordcloud2)
+library(gridExtra)
+library(ngram)
+library(shiny) 
+```
+
+```{r}
+# combine two table (filter some rows containing information that we don't need)
+tdata <- hm_data %>%
+  inner_join(newdemo, by = "wid") %>%
+  select(wid,
+         original_hm,
+         cleaned_hm,
+         modified,
+         predicted_category,
+         gender, 
+         marital, 
+         parenthood,
+         reflection_period,
+         agenum, 
+         country, 
+         ground_truth_category, 
+         text) %>%
+  mutate(count = sapply(hm_data$text, wordcount)) %>%
+  filter(gender %in% c("m", "f")) %>%
+  filter(marital %in% c("single", "married")) %>%
+  filter(parenthood %in% c("n", "y")) %>%
+  filter(country %in% c("USA")) %>%
+  filter(reflection_period %in% c("24h", "3m")) %>%
+  mutate(reflection_period = fct_recode(reflection_period, 
+                                        months_3 = "3m", hours_24 = "24h"))
+
+nrow(tdata)#; length(tdata$wid) # 删除一些不需要的信息后的总数据行数
+nrow(newdemo)#;length(hm_data$wid) #参与调查人数
+nrow(hm_data)#;length(newdemo$wid)  # 总数据的行数
+range(newdemo$wid)#; range(hm_data$wid); range(tdata$wid) # worker id
+misagewid<-newdemo[misage,"wid"]
+cleanageline<-NULL
+for(i in misagewid){
+cleanageline<-c(cleanageline,which(tdata$wid==i))
+}
+length(cleanageline)
+table(tdata$agenum)
+sum(is.na(tdata$agenum))
+sum(is.na(tdata[-cleanageline,]$agenum))
+tdata<-tdata[-cleanageline,] # 所有基础数据都全的data
+nrow(tdata)
+```
+There are 100392 data in the original data set and there we just use 73343 of them which contain the total information that we are interested in. There are 10844 people are involved in this survey, but the range of their wid is from 1 to 13839. 
+
+```{r}
+# head(table(hm_data$wid))#information of total data of wid
+# head(sort(table(tdata$wid),decreasing = TRUE),10) # find the people who give thier most information 
+# wid4<-tdata[which(tdata$wid==4),c(9,13)] # the 4th person's time and text.
+```
+
+
+```{r}
+wordslist<-sapply(tdata$text,strsplit,split=' ')  # split words to use the duplicated function
+clean.text<-rep(NA,length(wordslist))  # delete the duplicated word in text     
+for(i in 1:length(wordslist)){
+  clean.text[i]<-paste(wordslist[[i]][which(duplicated(wordslist[[i]])==FALSE)],collapse=" ")
+}
+tcdata<-cbind(tdata,clean.text) #把clean数据放入列表
+# clean.text[682] # 验证clean
+# tcdata$text[682]
+# length(clean.text)
+# nrow(tdata)
+```
+
+
+```{r} 
+#compare the text with the cleantext
+# text table后的结果（有重复）
+t1<-paste(tdata$text, collapse = " ")
+t1split<-strsplit(t1,split=" ")
+length(t1split[[1]]) #所有字符的长度
+sorttext<-sort(table(t1split[[1]]),decreasing = TRUE)
+head(sorttext,20)
+# head(sorttext[-2])
+
+# clean.text 查看table的结果（一个代表一个moment里的）
+tc.1<-paste(clean.text, collapse = " ")
+tc.1split<-strsplit(tc.1,split=" ")
+length(tc.1split[[1]]) #clean后所有字符的长度
+sorttctext<-sort(table(tc.1split[[1]]),decreasing = TRUE)
+head(sorttctext,20)
+
+# sorttctext[names="friend"]  # find the number of specific word appearing in each moment
+#tcdata[grep("friends",tdata$text),]
+# length(grep(" friend |^friend | friend$",clean.text)) #? what makes difference?
+# find number of words in clean.text should be equal to find the number of lines? 
+```
+
+Here we need to clean the text becuase there are duplicated words in one moment, and the duplicated words will make us count one moment more than once. So, here we need to remove this kind of error. From the result we can find some differences which means this work is necessary. 
+
+```{r}
+family_dict<-read_csv ("/Users/huyiyao/Desktop/topic_dict/family-dict.csv")
+
+#clean family dictionary like (grep(" family |^family | family$",clean.text))
+family_dict.clean<-data.frame()
+for(i in 1:nrow(family_dict)){
+  family_dict.clean[(i-1)*3+1,1]<-paste(" ",family_dict[i,1]," ",sep="")
+  family_dict.clean[(i-1)*3+2,1]<-paste("^",family_dict[i,1]," ",sep="") # head
+  family_dict.clean[(i-1)*3+3,1]<-paste(" ",family_dict[i,1],"$",sep="") # tail
+}
+family_dict.clean[1:3,]
+
+
+# use dictionary directly (grep can grep any term contain same word)
+wordrow<-NULL
+for(i in 1:nrow(family_dict)) {
+wordrow<-c(wordrow,grep(family_dict[i,1],tcdata$clean.text))
+}
+length(wordrow) # with duplicated rows
+sum.num<-length(which(duplicated(wordrow)==FALSE)) # without duplicated rows(every moment is counted once)
+
+#clean dictionary to use grep use grep the exactly terms.
+wordrow.clean<-NULL
+for(i in 1:nrow(family_dict.clean)) {
+wordrow.clean<-c(wordrow.clean,grep(family_dict.clean[i,],tcdata$clean.text))
+}
+length(wordrow.clean) # with duplicated rows
+sum.num<-length(which(duplicated(wordrow.clean)==FALSE))# without duplicated rows(every moment is counted once)
+
+familyrows<-as.numeric(names(table(wordrow.clean))) 
+# tcdata[familyrows,"clean.text"] all text contain family.
+# length(grep("friend",clean.text))
+friendrows<-grep("friend",clean.text)
+#length(grep("family",clean.text))
+```
+
+In this section, family_dict is cleaned to make it more excact to find the moments which contain family members. For example, "mom" can be a beginning of some other words which are not related to family member. However, for word "friend", even though there are other versions but all of them must be related to friend. In addition, we also get 2 very important vectors here, framilyrows and friendrow. We use use these two vectors do lots of job later.
+
+
+## Part 2: Data Analysis
+## American's Happy Moments with Family v.s. Friends
+```{r}
+wordcloud2(sorttctext[-c(2,3)][1:100],minRotation = 5, maxRotation = 7) 
+```
+
+## Does "friend" really beat "family"?
+### Definitely No!
+
+
+```{r}
+head(sorttctext[-c(2,3)],20)
+length(tc.1split[[1]])
+```
+
+From the word cloud and table we can find that the number of "friend" appeared in the happy moments is greatly larger than the "family", but is that the truth? People will be happier with friends rather than family? Let's see what is the truth under the data. 
+
+## 1 "Family" vs "Friend" !
+Actually, when we use family_dict to find other words like "mother","father","kid", we can get far more "family" which are expressed in other ways. From the data, there are 17941 happy moments contain the words related to "family"! Compared to 9160 happy moments contain "friend", "family" wins! We love family! Of course, friends are also very important to everyone. 
+
+```{r}
+ff<-c(familyrows,friendrows) # conbine ff which may appear duplicated value
+
+dupli.ffrows<-ff[which(duplicated(ff)==TRUE)] #find the duplicated value that's the rowname of the tcdata
+#length(dupli.ffrows) # find how many lines are duplicated
+
+where.duplifamily<-which(duplicated(c(dupli.ffrows,familyrows))==TRUE)-length(dupli.ffrows) # find the location of the dup fam
+only.familyrows<-familyrows[-where.duplifamily] # create a data only contain fam
+
+where.duplifriend<-which(duplicated(c(dupli.ffrows,friendrows))==TRUE)-length(dupli.ffrows) # find the location of the dup frie
+only.friendrows<-friendrows[-where.duplifriend] # create a data only have frie
+
+tcdatafriend.only<-cbind(tcdata[only.friendrows,],"family_vs_friend"=rep("friend",length(only.friendrows))) # this data only contain friend
+#nrow(tcdatafriend.only)
+tcdatafamily.only<-cbind(tcdata[only.familyrows,],"family_vs_friend"=rep("family",length(only.familyrows)))# this data only contain family
+#nrow(tcdatafamily.only)
+tcdataff.only<-rbind(tcdatafamily.only,tcdatafriend.only) # this data contain text only friend or only family. and hve one more col which give the information of the fam or fri
+#length(friendrows)+length(familyrows)-2*length(dupli.ffrows)==nrow(tcdataff.only) # lengths are equal 
+# 验证 grep("friend",tcdatafamily.only$clean.text); tail(tcdataff.only)
+
+age.friend<-tcdata$agenum[friendrows]
+age.family<-tcdata$agenum[familyrows]
+```
+In addition, we need to figur out that there are some happy moments contain both "family" and "friend". In this section we found there are 943 happy moments with both "family" and "friend", so the number of happy moments only contain "family" is 16998 and the the number of happy moments only contain "friend" is 8217.
+
+## 2 Who will be happy with family? vs Who will be happy with friend?
+Here, we anaylse that if there exists some difference between people who are happy with family and those who are happy with friend. 
+### (a) How old are you?
+```{r}
+pc1<-ggplot(tcdata, aes(agenum)) +
+geom_histogram(aes(y = ..density..), binwidth=5,color="black" , fill="lightblue", center = 22.5) +
+geom_density(adjust = 1, color="red") + xlim(0, 100)  + scale_x_continuous(breaks=c(0,15,25,35,45,55,65,75,100))+
+xlab("Total Age Distribution") + ylab("") 
+
+pc2<-ggplot(tcdata, aes(x=1,y=agenum)) +
+geom_boxplot(fill = "lightBlue") +ylab("") +xlab("Boxplot of Total Age")
+
+pc3<-ggplot(, aes(age.family)) +
+geom_histogram(aes(y = ..density..), binwidth=5,color="black" , fill="lightblue", center = 22.5) +
+geom_density(adjust = 1, color="red") + xlim(0, 100)  + scale_x_continuous(breaks=c(0,15,25,35,45,55,65,75,100))+
+xlab("Age of Family ") + ylab("") 
+
+pc4<-ggplot(tcdatafamily.only, aes(agenum)) +
+geom_histogram(aes(y = ..density..), binwidth=5,color="black" , fill="lightblue", center = 22.5) +
+geom_density(adjust = 1, color="red") + xlim(0, 100)  +scale_x_continuous(breaks=c(0,15,25,35,45,55,65,75,100))+
+xlab("Age of Only Family") + ylab("") 
+
+pc5<-ggplot(, aes(age.friend)) +
+geom_histogram(aes(y = ..density..), binwidth=5,color="black" , fill="lightblue", center = 22.5) +
+geom_density(adjust = 1, color="red") + xlim(0, 100)  +scale_x_continuous(breaks=c(0,15,25,35,45,55,65,75,100))+
+xlab("Age of Friend") + ylab("") 
+
+pc6<-ggplot(tcdatafriend.only, aes(agenum)) +
+geom_histogram(aes(y = ..density..), binwidth=5,color="black" , fill="lightblue", center = 22.5) +
+geom_density(adjust = 1, color="red") + xlim(0, 100)  +scale_x_continuous(breaks=c(0,15,25,35,45,55,65,75,100))+
+xlab("Age of Only Friend") + ylab("") 
+
+library(gridExtra)
+grid.arrange(pc1, pc2,pc3,pc4,pc5,pc6, nrow = 3)
+```
+This set of plots contain both histograms and boxplots. We analyse the difference of people's age who spend their happy moments with their family and who spend thier happy moments with their firends. The first line gives us the total distribution of age of the data. We can find that most people who do this survey are between 20-45. From the boxplot we can find that there are many outliers and the median of the data is around 30. 
+In the second line of this graph. First one plots the distribution of age from those whose happy moments are with their family and the second one only plots the ages of one whose happy moments only contain family.
+In the third line of this graph. First one plots the distribution of the age from those whose happy moments are with their friends and the other one plots the ages of those whose happy moments only metion friends. 
+
+To compare with these set of histograms and density curves, we can find that people who feel happier with their family are older than those are happy with their friends. In addition, we can also find that there are more younger people who only mention friend in their happy moments(compare the 2 graphs in the third line).
+
+```{r}
+X<-c(tcdata$agenum,age.family,age.friend)
+A<-factor(c(rep(1,length(tcdata$agenum)),rep(2,length(age.family)),rep(3,length(age.friend))))
+age3kind<-data.frame(X,A)
+
+#多重t检验
+# attach(age3kind)
+mu<-c(mean(X[A==1]), mean(X[A==2]), mean(X[A==3])); mu
+pairwise.t.test(X, A, p.adjust.method = "none")
+
+# t test
+data.frame(t.test(tcdatafamily.only$agenum,age.family) [c(3,4,5)],t.test(tcdatafriend.only$agenum,age.friend) [c(3,4,5)])
+```
+
+To give more specific values, we use t.test to display the data. 
+Firstly, by using multiple-t-test, we find that the means of age from total data, family data, friend data are all difference with each other. 
+Using t-test to analyse the mean of age from family data and only family data, we find that the mean of them are equal can be accept under 95% confidence interval. However, the mean of age from friend data is larger than only friend data.
+
+### Conclusion: Younger people are easier to be happy with thier friends!
+
+```{r}
+gen.family<-tcdata$gender[familyrows]
+gen.friend<-tcdata$gender[friendrows]
+data.frame(table(gen.family)/length(gen.family),table(gen.friend)/length(gen.friend))
+
+mar.family<-tcdata$marital[familyrows]
+mar.friend<-tcdata$marital[friendrows]
+data.frame(table(mar.family)/length(mar.family),table(mar.friend)/length(mar.friend))
+
+par.family<-tcdata$parenthood[familyrows]
+par.friend<-tcdata$parenthood[friendrows]
+data.frame(table(par.family)/length(par.family),table(par.friend)/length(par.friend))
+
+peri.family<-as.character(tcdata$reflection_period[familyrows])
+peri.friend<-as.character(tcdata$reflection_period[friendrows])
+data.frame(table(peri.family)/length(peri.family),table(peri.friend)/length(peri.friend))
+
+precate.family<-tcdata$predicted_category[familyrows]
+precate.friend<-tcdata$predicted_category[friendrows]
+data.frame(table(precate.family)/length(precate.family),table(precate.friend)/length(precate.friend))
+
+#sort(table(precate.family)/length(precate.family))["exercise"]
+```
+
+```{r}
+ff.info<-data.frame("family_vs_friend"=c(rep("family",length(gen.family)),rep("friend",length(gen.friend))),"gender"=c(gen.family,gen.friend),"marital"=c(mar.family,mar.friend),"parenthood"=c(par.family,par.friend),"reflection_period"=c(peri.family,peri.friend),"predicted_category"=c(precate.family,precate.friend)) # create a dataframe
+
+
+genplot<-ggplot(data = ff.info) + 
+  geom_bar(mapping = aes(x = family_vs_friend, fill = gender), position = "fill")+scale_fill_manual(values = alpha(c("lightblue","blue"),5/7)) # need be dataframe
+marplot<-ggplot(data = ff.info) + 
+  geom_bar(mapping = aes(x = family_vs_friend, fill = marital), position = "fill")+scale_fill_manual(values = alpha(c("lightblue","blue"),5/7))
+parplot<-ggplot(data = ff.info) + 
+  geom_bar(mapping = aes(x = family_vs_friend, fill = parenthood), position = "fill")+scale_fill_manual(values = alpha(c("lightblue","blue"),5/7))
+periplot<-ggplot(data = ff.info) + 
+  geom_bar(mapping = aes(x = family_vs_friend, fill = reflection_period), position = "fill")+scale_fill_manual(values = alpha(c("lightblue","blue"),5/7))
+grid.arrange(genplot,marplot,parplot,periplot, nrow = 2)
+```
+From this set of chart we can tell that famale spend more happy moments with their family than the male.
+Married people's happy moments are more related to family than those who are single.
+When people have children their happy moments contain more matters about their family.
+As for the reflection_period, that do not influence the people's happy moments.
+
+```{r}
+precateplot<-ggplot(data = ff.info) + 
+  geom_bar(mapping = aes(x = family_vs_friend, fill = predicted_category), alpha = 5/7, position = "fill")+scale_fill_manual(values = alpha(c(4,5,6,7,11,2,1)))
+
+precateplot.onlyff<-ggplot(data = tcdataff.only) + 
+  geom_bar(mapping = aes(x = family_vs_friend, fill = predicted_category), alpha = 5/7, position = "fill")+scale_fill_manual(values = alpha(c(4,5,6,7,11,2,1)))
+
+grid.arrange(precateplot+coord_flip(),precateplot.onlyff+coord_flip(), nrow = 2)
+```
+In this chart we analyse the different category when they are happy with different people. 
+Obviously, when people spend thier happy moments with friends, they feel more about bonding. When people spend thier happy moments with family, they feel more about affection. In addtion, feeling achievement will accurs more when they are happy with their family than with friends. Enjoy the moment and leisure will also more common when they are happy with their family. 
+
+The upper graph use total data from family and friend and the lower graph use data from only family and only friend. We can find little difference between them. Feeling bonding is seldom occurs in the happy moments only with family. 
+
+
+## 3 what activities people do with family? vs What activities people do with friend?
+```{r}
+#family
+family_tc.1<-paste(clean.text[familyrows], collapse = " ")
+family_tc.1split<-strsplit(family_tc.1,split=" ")
+#length(family_tc.1split[[1]]) #clean后所有字符的长度
+family_sorttctext<-sort(table(family_tc.1split[[1]]),decreasing = TRUE)
+```
+
+
+```{r}
+wordcloud2(family_sorttctext[-c(2,6,7)][1:100],minRotation = 5, maxRotation = 7)
+```
+
+
+```{r}
+head(sort(family_sorttctext[-c(2,6,7)],decreasing = TRUE),20) 
+```
+
+```{r}
+#friend
+friend_tc.1<-paste(clean.text[friendrows], collapse = " ")
+friend_tc.1split<-strsplit(friend_tc.1,split=" ")
+#length(friend_tc.1split[[1]]) #clean后所有字符的长度
+friend_sorttctext<-sort(table(friend_tc.1split[[1]]),decreasing = TRUE)
+```
+
+
+```{r}
+wordcloud2(friend_sorttctext[-c(1,4,5,18,30)][1:100],minRotation = 5, maxRotation = 7)
+```
+
+
+```{r}
+head(sort(friend_sorttctext[-c(1,4,5,18,30)],decreasing = TRUE),20)
+
+```
+
+We can find some commmon point from these graphs that is people is the most important points and then have dinner together! That sounds good! It is happy moment!
+
+```{r}
+# clean dictionary!
+
+#clean entertainment dictionary like (grep(" family |^family | family$",clean.text))
+entertainment_dict<-read_csv ("/Users/huyiyao/Desktop/topic_dict/entertainment-dict.csv")
+entertainment_dict.clean<-data.frame()
+for(i in 1:nrow(entertainment_dict)){
+  entertainment_dict.clean[(i-1)*3+1,1]<-paste(" ",entertainment_dict[i,1]," ",sep="")
+  entertainment_dict.clean[(i-1)*3+2,1]<-paste("^",entertainment_dict[i,1]," ",sep="")
+  entertainment_dict.clean[(i-1)*3+3,1]<-paste(" ",entertainment_dict[i,1],"$",sep="")
+}
+#entertainment_dict.clean[1:3,]
+
+
+#clean exercise dictionary like (grep(" family |^family | family$",clean.text))
+exercise_dict<-read_csv ("/Users/huyiyao/Desktop/topic_dict/exercise-dict.csv")
+exercise_dict.clean<-data.frame()
+for(i in 1:nrow(exercise_dict)){
+  exercise_dict.clean[(i-1)*3+1,1]<-paste(" ",exercise_dict[i,1]," ",sep="")
+  exercise_dict.clean[(i-1)*3+2,1]<-paste("^",exercise_dict[i,1]," ",sep="")
+  exercise_dict.clean[(i-1)*3+3,1]<-paste(" ",exercise_dict[i,1],"$",sep="")
+}
+#exercise_dict.clean[1:3,]
+
+
+#clean food dictionary like (grep(" family |^family | family$",clean.text))
+food_dict<-read_csv ("/Users/huyiyao/Desktop/topic_dict/food-dict.csv")
+food_dict.clean<-data.frame()
+for(i in 1:nrow(food_dict)){
+  food_dict.clean[(i-1)*3+1,1]<-paste(" ",food_dict[i,1]," ",sep="")
+  food_dict.clean[(i-1)*3+2,1]<-paste("^",food_dict[i,1]," ",sep="")
+  food_dict.clean[(i-1)*3+3,1]<-paste(" ",food_dict[i,1],"$",sep="")
+}
+#food_dict.clean[1:3,]
+
+
+#clean people dictionary like (grep(" family |^family | family$",clean.text))
+people_dict<-read_csv ("/Users/huyiyao/Desktop/topic_dict/people-dict.csv")
+people_dict.clean<-data.frame()
+for(i in 1:nrow(people_dict)){
+  people_dict.clean[(i-1)*3+1,1]<-paste(" ",people_dict[i,1]," ",sep="")
+  people_dict.clean[(i-1)*3+2,1]<-paste("^",people_dict[i,1]," ",sep="")
+  people_dict.clean[(i-1)*3+3,1]<-paste(" ",people_dict[i,1],"$",sep="")
+}
+#people_dict.clean[1:3,]
+
+
+#clean pets dictionary like (grep(" family |^family | family$",clean.text))
+pets_dict<-read_csv ("/Users/huyiyao/Desktop/topic_dict/pets-dict.csv")
+pets_dict.clean<-data.frame()
+for(i in 1:nrow(pets_dict)){
+  pets_dict.clean[(i-1)*3+1,1]<-paste(" ",pets_dict[i,1]," ",sep="")
+  pets_dict.clean[(i-1)*3+2,1]<-paste("^",pets_dict[i,1]," ",sep="")
+  pets_dict.clean[(i-1)*3+3,1]<-paste(" ",pets_dict[i,1],"$",sep="")
+}
+#pets_dict.clean[1:3,]
+
+
+#clean school dictionary like (grep(" family |^family | family$",clean.text))
+school_dict<-read_csv ("/Users/huyiyao/Desktop/topic_dict/school-dict.csv")
+school_dict.clean<-data.frame()
+for(i in 1:nrow(school_dict)){
+  school_dict.clean[(i-1)*3+1,1]<-paste(" ",school_dict[i,1]," ",sep="")
+  school_dict.clean[(i-1)*3+2,1]<-paste("^",school_dict[i,1]," ",sep="")
+  school_dict.clean[(i-1)*3+3,1]<-paste(" ",school_dict[i,1],"$",sep="")
+}
+#school_dict.clean[1:3,]
+
+
+#clean shopping dictionary like (grep(" family |^family | family$",clean.text))
+shopping_dict<-read_csv ("/Users/huyiyao/Desktop/topic_dict/shopping-dict.csv")
+shopping_dict.clean<-data.frame()
+for(i in 1:nrow(shopping_dict)){
+  shopping_dict.clean[(i-1)*3+1,1]<-paste(" ",shopping_dict[i,1]," ",sep="")
+  shopping_dict.clean[(i-1)*3+2,1]<-paste("^",shopping_dict[i,1]," ",sep="")
+  shopping_dict.clean[(i-1)*3+3,1]<-paste(" ",shopping_dict[i,1],"$",sep="")
+}
+shopping_dict.clean<-data.frame(shopping_dict.clean[-c(31:39),])
+#shopping_dict.clean[1:3,]
+
+
+#clean work dictionary like (grep(" family |^family | family$",clean.text))
+work_dict<-read_csv ("/Users/huyiyao/Desktop/topic_dict/work-dict.csv")
+work_dict.clean<-data.frame()
+for(i in 1:nrow(work_dict)){
+  work_dict.clean[(i-1)*3+1,1]<-paste(" ",work_dict[i,1]," ",sep="")
+  work_dict.clean[(i-1)*3+2,1]<-paste("^",work_dict[i,1]," ",sep="")
+  work_dict.clean[(i-1)*3+3,1]<-paste(" ",work_dict[i,1],"$",sep="")
+}
+#work_dict.clean[1:3,]
+```
+
+```{r}
+dict.f<-function(x) { # x is x_dict.clean  
+
+#clean dictionary to use grep use grep the exactly terms.
+wordrow.clean<-NULL
+for(i in 1:nrow(x)) {
+wordrow.clean<-c(wordrow.clean,grep(x[i,],tcdata$clean.text))
+}
+sum.num_dict<-length(wordrow.clean) # with duplicated rows
+mergerow_sum.num_dict<-length(which(duplicated(wordrow.clean)==FALSE))# without duplicated rows(every moment is counted once)
+dict_rows<-as.numeric(names(table(wordrow.clean)))
+
+tablerows_dict.fam<-table(c(dict_rows,familyrows))
+dict_rows.in_family<-as.numeric(names(tablerows_dict.fam[which(tablerows_dict.fam==2)]))
+
+tablerows_dict.fri<-table(c(dict_rows,friendrows))
+dict_rows.in_friend<-as.numeric(names(tablerows_dict.fri[which(tablerows_dict.fri==2)]))
+
+return(list("sum.words"=sum.num_dict,"sum.lines"=mergerow_sum.num_dict,"dict_rows"=dict_rows,"dict_rows.in_family"=dict_rows.in_family,"dict_rows.in_friend"=dict_rows.in_friend))
+}
+entertainment.sum<-dict.f(entertainment_dict.clean)
+exercise.sum<-dict.f(exercise_dict.clean)
+family.sum<-dict.f(family_dict.clean)
+food.sum<-dict.f(food_dict.clean)
+people.sum<-dict.f(people_dict.clean)
+pets.sum<-dict.f(pets_dict.clean)
+school.sum<-dict.f(school_dict.clean)
+shopping.sum<-dict.f(shopping_dict.clean)
+work.sum<-dict.f(work_dict.clean)
+
+# length(familyrows)
+#length(friendrows)
+#summary(entertainment.sum)
+#entertainment.sum$sum.lines
+#summary(exercise.sum)
+#summary(family.sum)
+#table(family.sum$dict_rows==family.sum$dict_rows.in_family)
+#summary(food.sum)
+#summary(people.sum)
+#summary(pets.sum)
+#summary(school.sum)
+#summary(shopping.sum)
+#summary(work.sum)
+```
+
+```{r}
+ffvsdict<-data.frame("entertainment"=c(909,577),"exercise"=c(1227,700),"family"=c(17941,943),"food"=c(3543,1952),"people"=c(17725,9055),"pets"=c(482,238),"school"=c(709,283),"shopping"=c(977,357),"work"=c(730,320),row.names =c("family","friend"))
+rate.ffvsdict<-rbind(ffvsdict[1,]/length(familyrows),ffvsdict[2,]/length(friendrows))
+ffvsdict[,-c(3,5)]
+rate.ffvsdict[,-c(3,5)]
+```
+
+```{r}
+#install.packages("fmsb")
+
+library(fmsb)
+maxmin <- data.frame(
+ entertainment=c(0.1, 0.01),
+ exercise=c(0.1, 0.01),
+ food=c(0.2, 0.01),
+ pets=c(0.1, 0.01),
+ school=c(0.1, 0.01),
+ shopping=c(0.1, 0.01),
+ work=c(0.1, 0.01))
+dat<-rbind(maxmin,rate.ffvsdict[,-c(3,5)])
+
+radarchart(dat, axistype=2, pcol=topo.colors(3), plty=1, pdensity=c(5, 10, 30), 
+ pangle=c(10, 45, 120), pfcol=topo.colors(3), 
+ title="activities with family vs friend")
+
+L <- 1
+for(i in 1:2){
+  legend(1.5, L, legend = c("family","friend"), lty = i, lwd = 3, col = topo.colors(3), bty = "n")
+}
+```
+
+In this part, we are going to find out what people prefer do with different people("family" vs "friend"). 
+Using the percentage number and the radar plot, we can find that with family and friends people like do something about food, maybe having food or making food. Then people prefer to do exercise with their family and friend. The least things people do with family and friend are pets and work and that make scense, because these things usually can be done by self. 
+
+To compare the different activities with family and firend, the radar plot also shows us that when people have fun with their friend the term of "food","exercise","enterainment" take more percentage than when they with their family. On the other hand, when people spending their happy time with their family, they are prefer to go shopping or talk about school or work, they also so spend more happy moments with family on "pets" than with friend.
+
+
+
+## 4 Who are Family?! 
+```{r}
+familymember_dict<-read_csv ("/Users/huyiyao/Desktop/topic_dict/familymember-dict.csv")
+
+#clean family dictionary like (grep(" family |^family | family$",clean.text))
+familyspouse_dict.clean<-data.frame()
+for(i in 1:nrow(familymember_dict[,1])){
+  familyspouse_dict.clean[(i-1)*3+1,1]<-paste(" ",familymember_dict[i,1]," ",sep="")
+  familyspouse_dict.clean[(i-1)*3+2,1]<-paste("^",familymember_dict[i,1]," ",sep="")
+  familyspouse_dict.clean[(i-1)*3+3,1]<-paste(" ",familymember_dict[i,1],"$",sep="")
+}
+# familyspouse_dict.clean[1:3,]
+
+familyparent_offspring_dict.clean<-data.frame()
+for(i in 1:nrow(familymember_dict[,2])){
+  familyparent_offspring_dict.clean[(i-1)*3+1,1]<-paste(" ",familymember_dict[i,2]," ",sep="")
+  familyparent_offspring_dict.clean[(i-1)*3+2,1]<-paste("^",familymember_dict[i,2]," ",sep="")
+  familyparent_offspring_dict.clean[(i-1)*3+3,1]<-paste(" ",familymember_dict[i,2],"$",sep="")
+}
+# familyparent_offspring_dict.clean[1:3,]
+
+
+familylarge_dict.clean<-data.frame()
+for(i in 1:nrow(familymember_dict[,3])){
+  familylarge_dict.clean[(i-1)*3+1,1]<-paste(" ",familymember_dict[i,3]," ",sep="")
+  familylarge_dict.clean[(i-1)*3+2,1]<-paste("^",familymember_dict[i,3]," ",sep="")
+  familylarge_dict.clean[(i-1)*3+3,1]<-paste(" ",familymember_dict[i,3],"$",sep="")
+}
+# familylarge_dict.clean[1:3,]
+
+familyrelative_dict.clean<-data.frame()
+for(i in 1:nrow(familymember_dict[,4])){
+  familyrelative_dict.clean[(i-1)*3+1,1]<-paste(" ",familymember_dict[i,4]," ",sep="")
+  familyrelative_dict.clean[(i-1)*3+2,1]<-paste("^",familymember_dict[i,4]," ",sep="")
+  familyrelative_dict.clean[(i-1)*3+3,1]<-paste(" ",familymember_dict[i,4],"$",sep="")
+}
+# familyrelative_dict.clean[1:3,]
+
+
+#clean dictionary to use grep use grep the exactly terms.
+family.member<-function(x){ #x is familyspouse_dict.clean
+wordrow.clean<-NULL
+for(i in 1:nrow(x)) {
+wordrow.clean<-c(wordrow.clean,grep(x[i,],tcdata$clean.text))
+}
+length(wordrow.clean) # with duplicated rows
+summember.num<-length(which(duplicated(wordrow.clean)==FALSE))# without duplicated rows(every moment is counted once)
+familymemberrows<-as.numeric(names(table(wordrow.clean)))
+return(list("total.length"=length(wordrow.clean),"summember.row"=summember.num,"familymember.rows"=familymemberrows))
+}
+spouse<-family.member(familyspouse_dict.clean)
+parent_offspring<-family.member(familyparent_offspring_dict.clean)
+familylarge<-family.member(familylarge_dict.clean)
+familyrelative<-family.member(familyrelative_dict.clean)
+
+total_length<-data.frame("spouse"=spouse[1],"parent_offspring"=parent_offspring[1],"familylarge"=familylarge[1],"relative"=familyrelative[1])
+summember_row<-data.frame("spouse"=spouse[2],"parent_offspring"=parent_offspring[2],"familylarge"=familylarge[2],"relative"=familyrelative[2])
+total_length
+summember_row
+```
+In this section, we go futher studies on "family". We categorize family into four groups by using family_dict. The first group of family is spouse; the second one is parent_offspring; the third one is familylarge which contain people like "brother","sister","grandmother","grandfather", those peoply may live together; the fourth one is relatives, like "cousin","aunt".
+
+Here our job is to find difference of category of happy moments that people will have on different family member they are with. From earlier work, we know that people will more likely feel affection and achievement with their family compared with friend. Now we are going to figer out what knids of group of family will give us what kind of feelings.
+
+```{r}
+member<-c(rep("spouse",spouse$summember.row),rep("parent_offspring",parent_offspring$summember.row),rep("familylarge",familylarge$summember.row),rep("relative",familyrelative$summember.row))
+
+pre_category<-c(tcdata[spouse$familymember.rows,]$predicted_category,tcdata[parent_offspring$familymember.rows,]$predicted_category,tcdata[familylarge$familymember.rows,]$predicted_category,tcdata[familyrelative$familymember.rows,]$predicted_category)
+
+fmem_precate<-data.frame(member,pre_category)
+```
+
+```{r}
+p1<-ggplot(data = fmem_precate) +
+  geom_count(mapping = aes(x = member, y = pre_category))
+
+p2<-fmem_precate %>% 
+  count(member, pre_category) %>%  
+  ggplot(mapping = aes(x = member, y = pre_category)) +
+    geom_tile(mapping = aes(fill = n))
+grid.arrange(p1,p2, nrow = 2)
+```
+
+This pair of graph using absolute value shows us that people will strongly feel affection if they are parent_offspring relationship compared with other relationship. The secondary relationship give us most affectino feeling is spouse. For the achievement feeling, we can have the similar conclusion that parent_offspring is the first one. Compared with other relationship parent_offspring may contain more categories cause we can find in the lower graph the parent_offspring columnis brighter than others. There are also some blank in the relationship of familylarge and relativies. Not suprising, this kind of family are less contacted with when compared to parent_offspring and spouse. 
+
+```{r}
+ggplot(data = fmem_precate) + 
+  geom_bar(mapping = aes(x = member, fill = pre_category), alpha = 5/7, position = "fill")+scale_fill_manual(values = alpha(c(4,5,6,7,11,2,1)))+coord_flip()
+```
+
+From this plot, even though we are anaylsing the same question but it shows us different information by using percentage value. With percentage value, we can excavate more other categories. We can find that when people spend happy moments with thier relativies, can can be engaged in more categories like "affection", "achievement", "enjoy_the_moment", "leisure", "bonding". And it is obviously that people like feeling achievement and enjoy_the_moment also leisure with thier relatives than other group of family. Feeling achievement also accurs in "familylarge". "Bonding" are more likely to appear when they spend tiem with their "parent_offspring" and "familylarge". "Spouse" seldom have happy moments about "enjoy_the_moment", and relatives seldom have happy moments about "nature".
+
+Above all we can conclude that different groups of family play different functions in our happy moments. However, the most of category in family's happy moments is affection, which is totally different from the category when people have happy moments with their friends--"bonding". Bonding and affection are the top 2 categories when people's happy moments are related to family and friends. 
+
+
+
+
+
