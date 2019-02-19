@@ -12,7 +12,7 @@ Term: Spring 2019
 + Projec title: Americans' Happy Moments with Family vs. Friends
 + This project is conducted by [yh3076]
 
-+ Project summary: [a short summary] Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
++ Project summary: Family and Friends are two very important groups for everyone of us. However, they are totally different spheres in our lives. When we first look at the general word cloud of this data, we can observe that the word "friend" are way bigger than word "family". Does that mean firends will play a more important role to make people happier than family do? To figure out what's the real situation, in this project, we will focus on comparisons of these two groups and study the differences of people's happy moments with their family and their happy moments with their friends. 
 
 Following [suggestions](http://nicercode.github.io/blog/2013-04-05-projects/) by [RICH FITZJOHN](http://nicercode.github.io/about/#Team) (@richfitz). This folder is orgarnized as follows.
 
